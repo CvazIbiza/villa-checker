@@ -5,8 +5,8 @@ from datetime import datetime
 app = Flask(__name__)
 
 villas = [
-    {"name": "Villa A", "ical": "https://TU-ICAL-1.ics"},
-    {"name": "Villa B", "ical": "https://TU-ICAL-2.ics"},
+    {"name": "Villa Test 1", "ical": "https://www.calendarlabs.com/ical-calendar/ics/76/US_Holidays.ics"},
+    {"name": "Villa Test 2", "ical": "https://www.calendarlabs.com/ical-calendar/ics/44/UK_Holidays.ics"},
 ]
 
 def is_available(ical_url, start_date, end_date):
