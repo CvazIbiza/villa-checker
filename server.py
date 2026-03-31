@@ -8,8 +8,8 @@ app = Flask(__name__)
 CORS(app)
 
 villas = [
-    {"name": "Villa Test 1", "ical": "https://www.calendarlabs.com/ical-calendar/ics/76/US_Holidays.ics"},
-    {"name": "Villa Test 2", "ical": "https://www.calendarlabs.com/ical-calendar/ics/44/UK_Holidays.ics"},
+    {"name": "Villa Bayview", "ical": "https://platform.hostaway.com/ical/oa1HWBI56NzbAMgClOcBidsGrQp9hYOqPXug3QXTcq7ze0wmfj0iLlH4Et9ELA5D/listings/466923.ics"},
+    {"name": "Villa Nivaria", "ical": "https://platform.hostaway.com/ical/oa1HWBI56NzbAMgClOcBidsGrQp9hYOqPXug3QXTcq7ze0wmfj0iLlH4Et9ELA5D/listings/466925.ics"},
 ]
 
 HEADERS = {
