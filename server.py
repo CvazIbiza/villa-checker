@@ -16,8 +16,6 @@ villas = [
         "name": "Villa Nivaria",
         "ical": "https://platform.hostaway.com/ical/oa1HWBI56NzbAMgClOcBidsGrQp9hYOqPXug3QXTcq7ze0wmfj0iLlH4Et9ELA5D/listings/466925.ics"
     },
-
-    # Guesty
     {
         "name": "Villa Bambu",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/43f13b34-76e2-4f08-af18-06465a0fcf9f"
@@ -37,12 +35,6 @@ HEADERS = {
 }
 
 def extract_date(value):
-    """
-    Extrae fecha desde strings tipo:
-    20260120
-    20260120T000000Z
-    ;VALUE=DATE:20260120
-    """
     match = re.search(r"(\d{8})", value)
     if not match:
         return None
@@ -69,7 +61,6 @@ def is_available(ical_url, start_date, end_date):
             if not booking_start or not booking_end:
                 continue
 
-            # Si se cruzan fechas, no está disponible
             if not (end_date <= booking_start or start_date >= booking_end):
                 return False
 
@@ -115,31 +106,34 @@ def check():
             "error": "End date must be later than start date"
         }), 400
 
-    results = []
+    available_results = []
+    errors = []
 
     for v in villas:
         available = is_available(v["ical"], start, end)
 
         if available is None:
-            results.append({
+            errors.append({
                 "villa": v["name"],
-                "available": False,
                 "status": "error",
                 "message": "Calendar could not be checked"
             })
-        else:
-            results.append({
+        elif available:
+            available_results.append({
                 "villa": v["name"],
-                "available": available,
+                "available": True,
                 "status": "ok",
-                "message": "Available" if available else "Not Available"
+                "message": "Available"
             })
 
     return jsonify({
         "ok": True,
         "start": start_str,
         "end": end_str,
-        "results": results
+        "available_count": len(available_results),
+        "message": "Available villas found" if available_results else "No villas available for the selected dates",
+        "results": available_results,
+        "errors": errors
     })
 
 if __name__ == "__main__":
