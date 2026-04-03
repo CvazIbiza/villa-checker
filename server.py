@@ -19,15 +19,15 @@ villas = [
 
     # Guesty
     {
-        "name": "Villa Guesty 1",
+        "name": "Villa Bambu",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/43f13b34-76e2-4f08-af18-06465a0fcf9f"
     },
     {
-        "name": "Villa Guesty 2",
+        "name": "Villa Luna",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/cb893f3c-dbe0-4cc6-af08-03620d040239"
     },
     {
-        "name": "Villa Guesty 3",
+        "name": "Villa Oasis",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/cf371f26-1981-4698-8106-3ddd39897464"
     }
 ]
