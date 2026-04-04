@@ -27,7 +27,7 @@ villas = [
     {
         "name": "Villa Oasis",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/cf371f26-1981-4698-8106-3ddd39897464"
-    }
+    },
      {
         "name": "Casa Juan",
         "ical": "https://www.airbnb.com/calendar/ical/883987254866482801.ics?t=6dcc4692128b4ee18a6894cc28a223bf&locale=es"
