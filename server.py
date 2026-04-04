@@ -37,7 +37,7 @@ villas = [
         "name": "Casa Juan",
         "bedrooms": 3,
         "ical": "https://www.airbnb.com/calendar/ical/883987254866482801.ics?t=6dcc4692128b4ee18a6894cc28a223bf&locale=es"
-    },
+    }
 ]
 
 HEADERS = {
@@ -73,7 +73,6 @@ def is_available(ical_url, start_date, end_date):
             if not booking_start or not booking_end:
                 continue
 
-            # Si las fechas se cruzan, no está disponible
             if not (end_date <= booking_start or start_date >= booking_end):
                 return False
 
@@ -143,7 +142,6 @@ def check():
     for villa in villas:
         villa_bedrooms = villa.get("bedrooms", 0)
 
-        # Filtra por habitaciones mínimas
         if min_bedrooms is not None and villa_bedrooms < min_bedrooms:
             continue
 
