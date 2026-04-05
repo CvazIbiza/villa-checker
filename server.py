@@ -10,32 +10,50 @@ CORS(app)
 villas = [
     {
         "name": "Villa Bayview",
+        "new_name": "nombre nuevo",
+        "zone": "",
         "bedrooms": 5,
+        "villa_type": "",
         "ical": "https://platform.hostaway.com/ical/oa1HWBI56NzbAMgClOcBidsGrQp9hYOqPXug3QXTcq7ze0wmfj0iLlH4Et9ELA5D/listings/466923.ics"
     },
     {
         "name": "Villa Nivaria",
+        "new_name": "nombre nuevo",
+        "zone": "",
         "bedrooms": 4,
+        "villa_type": "",
         "ical": "https://platform.hostaway.com/ical/oa1HWBI56NzbAMgClOcBidsGrQp9hYOqPXug3QXTcq7ze0wmfj0iLlH4Et9ELA5D/listings/466925.ics"
     },
     {
         "name": "Villa Bambu",
+        "new_name": "nombre nuevo",
+        "zone": "",
         "bedrooms": 6,
+        "villa_type": "",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/43f13b34-76e2-4f08-af18-06465a0fcf9f"
     },
     {
         "name": "Villa Luna",
+        "new_name": "nombre nuevo",
+        "zone": "",
         "bedrooms": 5,
+        "villa_type": "",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/cb893f3c-dbe0-4cc6-af08-03620d040239"
     },
     {
         "name": "Villa Oasis",
+        "new_name": "nombre nuevo",
+        "zone": "",
         "bedrooms": 4,
+        "villa_type": "",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/cf371f26-1981-4698-8106-3ddd39897464"
     },
     {
         "name": "Casa Juan",
-        "bedrooms": 3,
+        "new_name": "Villa Estrella",
+        "zone": "",
+        "bedrooms": 4,
+        "villa_type": "",
         "ical": "https://www.airbnb.com/calendar/ical/883987254866482801.ics?t=6dcc4692128b4ee18a6894cc28a223bf&locale=es"
     }
 ]
@@ -86,6 +104,10 @@ def is_available(ical_url, start_date, end_date):
         return None
 
 
+def normalize_text(value):
+    return str(value).strip().lower()
+
+
 @app.route("/")
 def home():
     return jsonify({
@@ -99,6 +121,8 @@ def check():
     start_str = request.args.get("start")
     end_str = request.args.get("end")
     bedrooms_str = request.args.get("bedrooms")
+    zone_str = request.args.get("zone")
+    villa_type_str = request.args.get("villa_type")
 
     if not start_str or not end_str:
         return jsonify({
@@ -136,28 +160,65 @@ def check():
                 "error": "Bedrooms must be a valid number"
             }), 400
 
+    villa_type = None
+    if villa_type_str:
+        try:
+            villa_type = int(villa_type_str)
+            if villa_type not in [1, 2]:
+                return jsonify({
+                    "ok": False,
+                    "error": "Villa type must be 1 or 2"
+                }), 400
+        except ValueError:
+            return jsonify({
+                "ok": False,
+                "error": "Villa type must be a valid number: 1 or 2"
+            }), 400
+
+    zone_filter = normalize_text(zone_str) if zone_str else None
+
     results = []
     errors = []
 
     for villa in villas:
         villa_bedrooms = villa.get("bedrooms", 0)
+        villa_zone = normalize_text(villa.get("zone", ""))
+        villa_type_value = villa.get("villa_type", "")
+        display_name = f'{villa["name"]} - {villa.get("new_name", "nombre nuevo")}'
 
         if min_bedrooms is not None and villa_bedrooms < min_bedrooms:
             continue
+
+        if zone_filter and villa_zone != zone_filter:
+            continue
+
+        if villa_type is not None:
+            try:
+                if int(villa_type_value) != villa_type:
+                    continue
+            except (ValueError, TypeError):
+                continue
 
         available = is_available(villa["ical"], start, end)
 
         if available is None:
             errors.append({
                 "villa": villa["name"],
+                "display_name": display_name,
+                "zone": villa.get("zone", ""),
                 "bedrooms": villa_bedrooms,
+                "villa_type": villa.get("villa_type", ""),
                 "status": "error",
                 "message": "Calendar could not be checked"
             })
         elif available:
             results.append({
                 "villa": villa["name"],
+                "display_name": display_name,
+                "new_name": villa.get("new_name", "nombre nuevo"),
+                "zone": villa.get("zone", ""),
                 "bedrooms": villa_bedrooms,
+                "villa_type": villa.get("villa_type", ""),
                 "available": True,
                 "status": "ok",
                 "message": "Available"
@@ -167,7 +228,9 @@ def check():
         "ok": True,
         "start": start_str,
         "end": end_str,
+        "zone_filter": zone_str if zone_str else None,
         "bedrooms_filter": min_bedrooms,
+        "villa_type_filter": villa_type,
         "available_count": len(results),
         "message": "Available villas found" if results else "No villas available for the selected filters",
         "results": results,
