@@ -12,14 +12,15 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Villa Availability Checker)"
 }
 
-# =========================
-# DATOS DE VILLAS
-# =========================
+# =========================================================
+# VILLAS
+# =========================================================
 villas = [
     {
         "name": "Villa Bayview",
         "new_name": "Villa Lucia",
         "zone": "Sant Josep",
+        "approx_zone": "Sant Josep",
         "bedrooms": 4,
         "villa_type": "2",
         "ical": "https://platform.hostaway.com/ical/oa1HWBI56NzbAMgClOcBidsGrQp9hYOqPXug3QXTcq7ze0wmfj0iLlH4Et9ELA5D/listings/466923.ics"
@@ -28,6 +29,7 @@ villas = [
         "name": "Villa Nivaria",
         "new_name": "Villa Real",
         "zone": "Sant Josep",
+        "approx_zone": "Sant Josep",
         "bedrooms": 4,
         "villa_type": "2",
         "ical": "https://platform.hostaway.com/ical/oa1HWBI56NzbAMgClOcBidsGrQp9hYOqPXug3QXTcq7ze0wmfj0iLlH4Et9ELA5D/listings/466925.ics"
@@ -36,6 +38,7 @@ villas = [
         "name": "Villa Bambu",
         "new_name": "Villa Carmela",
         "zone": "Eivissa",
+        "approx_zone": "Eivissa",
         "bedrooms": 5,
         "villa_type": "2",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/43f13b34-76e2-4f08-af18-06465a0fcf9f"
@@ -43,7 +46,8 @@ villas = [
     {
         "name": "Villa Luna",
         "new_name": "nombre nuevo",
-        "zone": "Sin definir",
+        "zone": "",
+        "approx_zone": "Eivissa",
         "bedrooms": 5,
         "villa_type": "",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/cb893f3c-dbe0-4cc6-af08-03620d040239"
@@ -52,6 +56,7 @@ villas = [
         "name": "Villa Oasis",
         "new_name": "Villa Deluxe",
         "zone": "Eivissa",
+        "approx_zone": "Eivissa",
         "bedrooms": 4,
         "villa_type": "2",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/cf371f26-1981-4698-8106-3ddd39897464"
@@ -60,15 +65,18 @@ villas = [
         "name": "Casa Juan",
         "new_name": "Villa Estrella",
         "zone": "Santa Eulalia",
+        "approx_zone": "Santa Eulalia",
         "bedrooms": 4,
         "villa_type": "2",
         "ical": "https://www.airbnb.com/calendar/ical/883987254866482801.ics?t=6dcc4692128b4ee18a6894cc28a223bf&locale=es"
     }
 ]
 
-# =========================
-# NORMALIZACIÓN / ALIAS DE ZONAS
-# =========================
+# =========================================================
+# NORMALIZACION
+# =========================================================
+ANY_VALUES = {"", "any", "all", "todos", "todas", "cualquiera", "none", "null"}
+
 ZONE_ALIASES = {
     "eivissa": "Eivissa",
     "ibiza": "Eivissa",
@@ -80,19 +88,37 @@ ZONE_ALIASES = {
     "san jose": "Sant Josep",
     "san josep": "Sant Josep",
     "sant jose": "Sant Josep",
-    "san josep de sa talaia": "Sant Josep",
     "sant josep de sa talaia": "Sant Josep",
+    "san josep de sa talaia": "Sant Josep",
 
     "santa eulalia": "Santa Eulalia",
     "santa eularia": "Santa Eulalia",
     "santa eularia des riu": "Santa Eulalia",
     "santa eulalia del rio": "Santa Eulalia",
 
-    "sin definir": "Sin definir",
-    "": "Sin definir",
+    "es canar": "Es Canar",
+    "cala llonga": "Cala Llonga",
+    "roca llisa": "Roca Llisa",
+    "cap martinet": "Cap Martinet",
+    "cala jondal": "Cala Jondal",
+    "es cubells": "Es Cubells",
+
+    "sin definir": "Sin definir"
 }
 
-ANY_VALUES = {"", "any", "all", "todos", "todas", "cualquiera", "no matter", "null", "none"}
+# zonas cercanas / aproximadas
+NEARBY_ZONES = {
+    "Eivissa": {"Cap Martinet", "Roca Llisa", "Talamanca", "Ibiza", "Ibiza Town", "Vila"},
+    "Sant Josep": {"Es Cubells", "Cala Jondal", "San Jose", "Sant Josep"},
+    "Santa Eulalia": {"Es Canar", "Cala Llonga", "Santa Eularia", "Santa Eulalia"},
+    "Es Canar": {"Santa Eulalia"},
+    "Cala Llonga": {"Santa Eulalia", "Roca Llisa"},
+    "Roca Llisa": {"Eivissa", "Santa Eulalia", "Cala Llonga"},
+    "Cap Martinet": {"Eivissa", "Talamanca"},
+    "Cala Jondal": {"Sant Josep", "Es Cubells"},
+    "Es Cubells": {"Sant Josep", "Cala Jondal"},
+    "Sin definir": set()
+}
 
 
 def strip_accents(text):
@@ -106,44 +132,80 @@ def normalize_text(value):
     return strip_accents(str(value).strip().lower())
 
 
+def parse_optional_filter(value):
+    normalized = normalize_text(value)
+    if normalized in ANY_VALUES:
+        return None
+    return str(value).strip()
+
+
 def normalize_zone(value):
-    raw = normalize_text(value)
-    if raw in ANY_VALUES:
+    normalized = normalize_text(value)
+
+    if normalized in ANY_VALUES:
         return None
 
-    if raw in ZONE_ALIASES:
-        return ZONE_ALIASES[raw]
+    if normalized in ZONE_ALIASES:
+        return ZONE_ALIASES[normalized]
 
-    # coincidencia aproximada simple
     for alias, canonical in ZONE_ALIASES.items():
-        if raw == alias or raw in alias or alias in raw:
+        if normalized in alias or alias in normalized:
             return canonical
 
-    # si no coincide, devolvemos el texto con formato más limpio
-    return str(value).strip().title() if str(value).strip() else "Sin definir"
+    raw = str(value).strip()
+    return raw.title() if raw else "Sin definir"
 
 
-def safe_int(value):
+def safe_int(value, default=None):
     try:
         return int(value)
     except (ValueError, TypeError):
-        return None
+        return default
 
 
 def build_display_name(villa):
-    original_name = villa.get("name", "").strip()
-    new_name = villa.get("new_name", "").strip()
+    original_name = str(villa.get("name", "")).strip()
+    new_name = str(villa.get("new_name", "")).strip()
 
-    if new_name and normalize_text(new_name) not in {"nombre nuevo", ""}:
+    if new_name and normalize_text(new_name) not in {"", "nombre nuevo"}:
         return f"{original_name} - {new_name}"
     return original_name
+
+
+def get_villa_zone(villa):
+    exact_zone = normalize_zone(villa.get("zone", ""))
+    if exact_zone:
+        return exact_zone
+
+    approx_zone = normalize_zone(villa.get("approx_zone", ""))
+    if approx_zone:
+        return approx_zone
+
+    return "Sin definir"
+
+
+def zone_matches(filter_zone, villa_zone):
+    if not filter_zone:
+        return True
+
+    if villa_zone == filter_zone:
+        return True
+
+    nearby = NEARBY_ZONES.get(filter_zone, set())
+    if villa_zone in nearby:
+        return True
+
+    reverse_nearby = NEARBY_ZONES.get(villa_zone, set())
+    if filter_zone in reverse_nearby:
+        return True
+
+    return False
 
 
 def extract_date(value):
     if not value:
         return None
 
-    # Busca YYYYMMDD dentro del texto, incluso si vienen horas o TZ
     match = re.search(r"(\d{8})", value)
     if not match:
         return None
@@ -178,7 +240,6 @@ def is_available(ical_url, start_date, end_date):
             if not booking_start or not booking_end:
                 continue
 
-            # Solape: si la reserva del calendario toca el rango solicitado, no está disponible
             if start_date < booking_end and end_date > booking_start:
                 return False
 
@@ -192,13 +253,6 @@ def is_available(ical_url, start_date, end_date):
         return None
 
 
-def parse_filter_value(value):
-    normalized = normalize_text(value)
-    if normalized in ANY_VALUES:
-        return None
-    return str(value).strip()
-
-
 @app.route("/")
 def home():
     return jsonify({
@@ -209,21 +263,35 @@ def home():
 
 @app.route("/filters")
 def filters():
-    zones = sorted({
-        normalize_zone(villa.get("zone", "Sin definir")) or "Sin definir"
+    exact_zones = {
+        get_villa_zone(villa)
         for villa in villas
-    })
+    }
+
+    extra_known_zones = {
+        "Eivissa",
+        "Sant Josep",
+        "Santa Eulalia",
+        "Es Canar",
+        "Cala Llonga",
+        "Roca Llisa",
+        "Cap Martinet",
+        "Cala Jondal",
+        "Es Cubells"
+    }
+
+    zones = sorted(exact_zones.union(extra_known_zones))
 
     bedroom_values = sorted({
-        villa.get("bedrooms", 0)
+        safe_int(villa.get("bedrooms"), 0)
         for villa in villas
-        if isinstance(villa.get("bedrooms"), int) and villa.get("bedrooms", 0) > 0
+        if safe_int(villa.get("bedrooms"), 0) > 0
     })
 
     villa_types = sorted({
-        str(villa.get("villa_type")).strip()
+        str(villa.get("villa_type", "")).strip()
         for villa in villas
-        if str(villa.get("villa_type")).strip() in {"1", "2"}
+        if str(villa.get("villa_type", "")).strip() in {"1", "2"}
     })
 
     return jsonify({
@@ -240,9 +308,9 @@ def filters():
 def check():
     start_str = request.args.get("start")
     end_str = request.args.get("end")
-    bedrooms_str = parse_filter_value(request.args.get("bedrooms"))
-    zone_str = parse_filter_value(request.args.get("zone"))
-    villa_type_str = parse_filter_value(request.args.get("villa_type"))
+    bedrooms_str = parse_optional_filter(request.args.get("bedrooms"))
+    zone_str = parse_optional_filter(request.args.get("zone"))
+    villa_type_str = parse_optional_filter(request.args.get("villa_type"))
 
     if not start_str or not end_str:
         return jsonify({
@@ -289,32 +357,30 @@ def check():
     errors = []
 
     for villa in villas:
-        villa_zone = normalize_zone(villa.get("zone", "Sin definir")) or "Sin definir"
-        villa_bedrooms = safe_int(villa.get("bedrooms")) or 0
+        villa_zone = get_villa_zone(villa)
+        villa_bedrooms = safe_int(villa.get("bedrooms"), 0)
         villa_type_value = str(villa.get("villa_type", "")).strip()
         display_name = build_display_name(villa)
 
-        # filtro bedrooms: muestra esa cantidad o más
         if min_bedrooms is not None and villa_bedrooms < min_bedrooms:
             continue
 
-        # filtro zona
-        if zone_filter is not None and villa_zone != zone_filter:
+        if zone_filter is not None and not zone_matches(zone_filter, villa_zone):
             continue
 
-        # filtro tipo
         if villa_type is not None and villa_type_value != villa_type:
             continue
 
         available = is_available(villa["ical"], start, end)
 
         villa_payload = {
-            "villa": villa["name"],
+            "villa": villa.get("name", ""),
             "display_name": display_name,
             "new_name": villa.get("new_name", ""),
             "zone": villa_zone,
             "bedrooms": villa_bedrooms,
             "villa_type": villa_type_value,
+            "matched_by_nearby_zone": zone_filter is not None and villa_zone != zone_filter and zone_matches(zone_filter, villa_zone)
         }
 
         if available is None:
