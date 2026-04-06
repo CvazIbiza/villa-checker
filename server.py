@@ -10,26 +10,26 @@ CORS(app)
 villas = [
     {
         "name": "Villa Bayview",
-        "new_name": "nombre nuevo",
-        "zone": "",
-        "bedrooms": 5,
-        "villa_type": "",
+        "new_name": "Villa Lucia",
+        "zone": "Sant Josep",
+        "bedrooms": 4,
+        "villa_type": "2",
         "ical": "https://platform.hostaway.com/ical/oa1HWBI56NzbAMgClOcBidsGrQp9hYOqPXug3QXTcq7ze0wmfj0iLlH4Et9ELA5D/listings/466923.ics"
     },
     {
         "name": "Villa Nivaria",
-        "new_name": "nombre nuevo",
-        "zone": "",
+        "new_name": "Villa Real",
+        "zone": "Sant Josep,
         "bedrooms": 4,
-        "villa_type": "",
+        "villa_type": "2",
         "ical": "https://platform.hostaway.com/ical/oa1HWBI56NzbAMgClOcBidsGrQp9hYOqPXug3QXTcq7ze0wmfj0iLlH4Et9ELA5D/listings/466925.ics"
     },
     {
         "name": "Villa Bambu",
-        "new_name": "nombre nuevo",
-        "zone": "",
-        "bedrooms": 6,
-        "villa_type": "",
+        "new_name": "Villa Carmela",
+        "zone": "Eivissa",
+        "bedrooms": 5,
+        "villa_type": "2",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/43f13b34-76e2-4f08-af18-06465a0fcf9f"
     },
     {
@@ -42,18 +42,18 @@ villas = [
     },
     {
         "name": "Villa Oasis",
-        "new_name": "nombre nuevo",
-        "zone": "",
+        "new_name": "Villa Deluxe",
+        "zone": "Eivissa",
         "bedrooms": 4,
-        "villa_type": "",
+        "villa_type": "2",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/cf371f26-1981-4698-8106-3ddd39897464"
     },
     {
         "name": "Casa Juan",
         "new_name": "Villa Estrella",
-        "zone": "",
+        "zone": "Santa Eulalia",
         "bedrooms": 4,
-        "villa_type": "",
+        "villa_type": "2",
         "ical": "https://www.airbnb.com/calendar/ical/883987254866482801.ics?t=6dcc4692128b4ee18a6894cc28a223bf&locale=es"
     }
 ]
