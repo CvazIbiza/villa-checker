@@ -3,10 +3,18 @@ from flask_cors import CORS
 import requests
 from datetime import datetime
 import re
+import unicodedata
 
 app = Flask(__name__)
 CORS(app)
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Villa Availability Checker)"
+}
+
+# =========================
+# DATOS DE VILLAS
+# =========================
 villas = [
     {
         "name": "Villa Bayview",
@@ -19,7 +27,7 @@ villas = [
     {
         "name": "Villa Nivaria",
         "new_name": "Villa Real",
-        "zone": "Sant Josep,
+        "zone": "Sant Josep",
         "bedrooms": 4,
         "villa_type": "2",
         "ical": "https://platform.hostaway.com/ical/oa1HWBI56NzbAMgClOcBidsGrQp9hYOqPXug3QXTcq7ze0wmfj0iLlH4Et9ELA5D/listings/466925.ics"
@@ -35,7 +43,7 @@ villas = [
     {
         "name": "Villa Luna",
         "new_name": "nombre nuevo",
-        "zone": "",
+        "zone": "Sin definir",
         "bedrooms": 5,
         "villa_type": "",
         "ical": "https://app.guesty.com/api/public/icalendar-dashboard-api/export/cb893f3c-dbe0-4cc6-af08-03620d040239"
@@ -58,23 +66,102 @@ villas = [
     }
 ]
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Villa Availability Checker)"
+# =========================
+# NORMALIZACIÓN / ALIAS DE ZONAS
+# =========================
+ZONE_ALIASES = {
+    "eivissa": "Eivissa",
+    "ibiza": "Eivissa",
+    "ibiza town": "Eivissa",
+    "ibiza ciudad": "Eivissa",
+    "vila": "Eivissa",
+
+    "sant josep": "Sant Josep",
+    "san jose": "Sant Josep",
+    "san josep": "Sant Josep",
+    "sant jose": "Sant Josep",
+    "san josep de sa talaia": "Sant Josep",
+    "sant josep de sa talaia": "Sant Josep",
+
+    "santa eulalia": "Santa Eulalia",
+    "santa eularia": "Santa Eulalia",
+    "santa eularia des riu": "Santa Eulalia",
+    "santa eulalia del rio": "Santa Eulalia",
+
+    "sin definir": "Sin definir",
+    "": "Sin definir",
 }
+
+ANY_VALUES = {"", "any", "all", "todos", "todas", "cualquiera", "no matter", "null", "none"}
+
+
+def strip_accents(text):
+    text = unicodedata.normalize("NFD", str(text))
+    return "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+
+
+def normalize_text(value):
+    if value is None:
+        return ""
+    return strip_accents(str(value).strip().lower())
+
+
+def normalize_zone(value):
+    raw = normalize_text(value)
+    if raw in ANY_VALUES:
+        return None
+
+    if raw in ZONE_ALIASES:
+        return ZONE_ALIASES[raw]
+
+    # coincidencia aproximada simple
+    for alias, canonical in ZONE_ALIASES.items():
+        if raw == alias or raw in alias or alias in raw:
+            return canonical
+
+    # si no coincide, devolvemos el texto con formato más limpio
+    return str(value).strip().title() if str(value).strip() else "Sin definir"
+
+
+def safe_int(value):
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def build_display_name(villa):
+    original_name = villa.get("name", "").strip()
+    new_name = villa.get("new_name", "").strip()
+
+    if new_name and normalize_text(new_name) not in {"nombre nuevo", ""}:
+        return f"{original_name} - {new_name}"
+    return original_name
 
 
 def extract_date(value):
+    if not value:
+        return None
+
+    # Busca YYYYMMDD dentro del texto, incluso si vienen horas o TZ
     match = re.search(r"(\d{8})", value)
     if not match:
         return None
-    return datetime.strptime(match.group(1), "%Y%m%d")
+
+    try:
+        return datetime.strptime(match.group(1), "%Y%m%d")
+    except ValueError:
+        return None
 
 
 def is_available(ical_url, start_date, end_date):
     try:
-        response = requests.get(ical_url, headers=HEADERS, timeout=10)
+        response = requests.get(ical_url, headers=HEADERS, timeout=15)
         response.raise_for_status()
         data = response.text
+
+        if "BEGIN:VEVENT" not in data:
+            return None
 
         events = data.split("BEGIN:VEVENT")
 
@@ -91,7 +178,8 @@ def is_available(ical_url, start_date, end_date):
             if not booking_start or not booking_end:
                 continue
 
-            if not (end_date <= booking_start or start_date >= booking_end):
+            # Solape: si la reserva del calendario toca el rango solicitado, no está disponible
+            if start_date < booking_end and end_date > booking_start:
                 return False
 
         return True
@@ -104,8 +192,11 @@ def is_available(ical_url, start_date, end_date):
         return None
 
 
-def normalize_text(value):
-    return str(value).strip().lower()
+def parse_filter_value(value):
+    normalized = normalize_text(value)
+    if normalized in ANY_VALUES:
+        return None
+    return str(value).strip()
 
 
 @app.route("/")
@@ -116,13 +207,42 @@ def home():
     })
 
 
+@app.route("/filters")
+def filters():
+    zones = sorted({
+        normalize_zone(villa.get("zone", "Sin definir")) or "Sin definir"
+        for villa in villas
+    })
+
+    bedroom_values = sorted({
+        villa.get("bedrooms", 0)
+        for villa in villas
+        if isinstance(villa.get("bedrooms"), int) and villa.get("bedrooms", 0) > 0
+    })
+
+    villa_types = sorted({
+        str(villa.get("villa_type")).strip()
+        for villa in villas
+        if str(villa.get("villa_type")).strip() in {"1", "2"}
+    })
+
+    return jsonify({
+        "ok": True,
+        "filters": {
+            "zones": zones,
+            "bedrooms": bedroom_values,
+            "villa_types": villa_types
+        }
+    })
+
+
 @app.route("/check")
 def check():
     start_str = request.args.get("start")
     end_str = request.args.get("end")
-    bedrooms_str = request.args.get("bedrooms")
-    zone_str = request.args.get("zone")
-    villa_type_str = request.args.get("villa_type")
+    bedrooms_str = parse_filter_value(request.args.get("bedrooms"))
+    zone_str = parse_filter_value(request.args.get("zone"))
+    villa_type_str = parse_filter_value(request.args.get("villa_type"))
 
     if not start_str or not end_str:
         return jsonify({
@@ -146,79 +266,66 @@ def check():
         }), 400
 
     min_bedrooms = None
-    if bedrooms_str:
-        try:
-            min_bedrooms = int(bedrooms_str)
-            if min_bedrooms <= 0:
-                return jsonify({
-                    "ok": False,
-                    "error": "Bedrooms must be greater than 0"
-                }), 400
-        except ValueError:
+    if bedrooms_str is not None:
+        min_bedrooms = safe_int(bedrooms_str)
+        if min_bedrooms is None or min_bedrooms <= 0:
             return jsonify({
                 "ok": False,
-                "error": "Bedrooms must be a valid number"
+                "error": "Bedrooms must be a valid number greater than 0"
             }), 400
 
     villa_type = None
-    if villa_type_str:
-        try:
-            villa_type = int(villa_type_str)
-            if villa_type not in [1, 2]:
-                return jsonify({
-                    "ok": False,
-                    "error": "Villa type must be 1 or 2"
-                }), 400
-        except ValueError:
+    if villa_type_str is not None:
+        villa_type = str(villa_type_str).strip()
+        if villa_type not in {"1", "2"}:
             return jsonify({
                 "ok": False,
-                "error": "Villa type must be a valid number: 1 or 2"
+                "error": "Villa type must be 1 or 2"
             }), 400
 
-    zone_filter = normalize_text(zone_str) if zone_str else None
+    zone_filter = normalize_zone(zone_str) if zone_str else None
 
     results = []
     errors = []
 
     for villa in villas:
-        villa_bedrooms = villa.get("bedrooms", 0)
-        villa_zone = normalize_text(villa.get("zone", ""))
-        villa_type_value = villa.get("villa_type", "")
-        display_name = f'{villa["name"]} - {villa.get("new_name", "nombre nuevo")}'
+        villa_zone = normalize_zone(villa.get("zone", "Sin definir")) or "Sin definir"
+        villa_bedrooms = safe_int(villa.get("bedrooms")) or 0
+        villa_type_value = str(villa.get("villa_type", "")).strip()
+        display_name = build_display_name(villa)
 
+        # filtro bedrooms: muestra esa cantidad o más
         if min_bedrooms is not None and villa_bedrooms < min_bedrooms:
             continue
 
-        if zone_filter and villa_zone != zone_filter:
+        # filtro zona
+        if zone_filter is not None and villa_zone != zone_filter:
             continue
 
-        if villa_type is not None:
-            try:
-                if int(villa_type_value) != villa_type:
-                    continue
-            except (ValueError, TypeError):
-                continue
+        # filtro tipo
+        if villa_type is not None and villa_type_value != villa_type:
+            continue
 
         available = is_available(villa["ical"], start, end)
 
+        villa_payload = {
+            "villa": villa["name"],
+            "display_name": display_name,
+            "new_name": villa.get("new_name", ""),
+            "zone": villa_zone,
+            "bedrooms": villa_bedrooms,
+            "villa_type": villa_type_value,
+        }
+
         if available is None:
             errors.append({
-                "villa": villa["name"],
-                "display_name": display_name,
-                "zone": villa.get("zone", ""),
-                "bedrooms": villa_bedrooms,
-                "villa_type": villa.get("villa_type", ""),
+                **villa_payload,
                 "status": "error",
                 "message": "Calendar could not be checked"
             })
         elif available:
             results.append({
-                "villa": villa["name"],
-                "display_name": display_name,
-                "new_name": villa.get("new_name", "nombre nuevo"),
-                "zone": villa.get("zone", ""),
-                "bedrooms": villa_bedrooms,
-                "villa_type": villa.get("villa_type", ""),
+                **villa_payload,
                 "available": True,
                 "status": "ok",
                 "message": "Available"
@@ -226,11 +333,13 @@ def check():
 
     return jsonify({
         "ok": True,
-        "start": start_str,
-        "end": end_str,
-        "zone_filter": zone_str if zone_str else None,
-        "bedrooms_filter": min_bedrooms,
-        "villa_type_filter": villa_type,
+        "filters_applied": {
+            "start": start_str,
+            "end": end_str,
+            "zone": zone_filter,
+            "bedrooms": min_bedrooms,
+            "villa_type": villa_type
+        },
         "available_count": len(results),
         "message": "Available villas found" if results else "No villas available for the selected filters",
         "results": results,
