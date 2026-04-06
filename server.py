@@ -70,6 +70,43 @@ villas = [
         "villa_type": "2",
         "ical": "https://www.airbnb.com/calendar/ical/883987254866482801.ics?t=6dcc4692128b4ee18a6894cc28a223bf&locale=es"
     }
+    {
+        "name": "Can Daniel",
+        "new_name": "Pendiente",
+        "zone": "Sant Josep",
+        "approx_zone": "Sant Josep",
+        "bedrooms": 4,
+        "villa_type": "1",
+        "ical": "https://ical.avaibook.com/ical/ua_5390c3b2492dd2818eef8ad4d9fc6bd9-0e01938fc48a2cfb5f2217fbfb00722d-c559427c0f397839ef54fb1b60eeacec.ics"
+    },
+{
+        "name": "Can Daniel",
+        "new_name": "Pendiente",
+        "zone": "Sant Josep",
+        "approx_zone": "Sant Josep",
+        "bedrooms": 4,
+        "villa_type": "1",
+        "ical": "https://ical.avaibook.com/ical/ua_5390c3b2492dd2818eef8ad4d9fc6bd9-0e01938fc48a2cfb5f2217fbfb00722d-c559427c0f397839ef54fb1b60eeacec.ics"
+    },
+{
+        "name": "Can Daniel",
+        "new_name": "Pendiente",
+        "zone": "Sant Josep",
+        "approx_zone": "Sant Josep",
+        "bedrooms": 4,
+        "villa_type": "1",
+        "ical": "https://ical.avaibook.com/ical/ua_4c18bf3d4f3f0603f6a6b86e536545c6-0e01938fc48a2cfb5f2217fbfb00722d-5cfca411a04d716c145792027fabbcee.ics"
+    },
+{
+        "name": "Coll Des Cocons",
+        "new_name": "Pendiente",
+        "zone": "Jesus",
+        "approx_zone": "Sant Josep",
+        "bedrooms": 4,
+        "villa_type": "1",
+        "ical": "https://ical.avaibook.com/ical/ua_5390c3b2492dd2818eef8ad4d9fc6bd9-0e01938fc48a2cfb5f2217fbfb00722d-c559427c0f397839ef54fb1b60eeacec.ics"
+    },
+
 ]
 
 # =========================================================
