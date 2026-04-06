@@ -19,7 +19,7 @@ villas = [
     {
         "name": "Villa Nivaria",
         "new_name": "Villa Real",
-        "zone": "Sant Josep,
+        "zone": "Sant Josep",
         "bedrooms": 4,
         "villa_type": "2",
         "ical": "https://platform.hostaway.com/ical/oa1HWBI56NzbAMgClOcBidsGrQp9hYOqPXug3QXTcq7ze0wmfj0iLlH4Et9ELA5D/listings/466925.ics"
