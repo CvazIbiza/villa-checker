@@ -1,9 +1,12 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
-from datetime import datetime
+from datetime import datetime, date
 import re
 import unicodedata
+import calendar
+from html.parser import HTMLParser
+from urllib.parse import urlparse, parse_qs
 
 app = Flask(__name__)
 CORS(app)
@@ -60,7 +63,39 @@ NEARBY_ZONES = {
     "Sin definir": set()
 }
 
+MONTHS = {
+    "january": 1, "jan": 1,
+    "february": 2, "feb": 2,
+    "march": 3, "mar": 3,
+    "april": 4, "apr": 4,
+    "may": 5,
+    "june": 6, "jun": 6,
+    "july": 7, "jul": 7,
+    "august": 8, "aug": 8,
+    "september": 9, "sep": 9, "sept": 9,
+    "october": 10, "oct": 10,
+    "november": 11, "nov": 11,
+    "december": 12, "dec": 12,
 
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "setiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12
+}
+
+
+# =========================================================
+# BASIC HELPERS
+# =========================================================
 def strip_accents(text):
     text = unicodedata.normalize("NFD", str(text))
     return "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
@@ -158,6 +193,485 @@ def extract_date(value):
         return None
 
 
+def month_name_to_number(text):
+    normalized = normalize_text(text)
+    return MONTHS.get(normalized)
+
+
+def parse_gid_from_url(url):
+    try:
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query)
+        gid_list = qs.get("gid")
+        if gid_list:
+            return gid_list[0]
+        if "#gid=" in url:
+            return url.split("#gid=")[-1]
+    except Exception:
+        pass
+    return None
+
+
+def normalize_google_sheet_url(url):
+    if not url:
+        return url
+
+    gid = parse_gid_from_url(url)
+    base = url.split("#")[0]
+
+    if "/edit" in base:
+        base = base.split("/edit")[0]
+
+    if gid:
+        return f"{base}/htmlview?gid={gid}"
+    return f"{base}/htmlview"
+
+
+def daterange(start_date, end_date):
+    current = start_date
+    while current < end_date:
+        yield current
+        current = current.replace(day=current.day) + (datetime.combine(current, datetime.min.time()) - datetime.combine(current, datetime.min.time()))
+        # overwritten below in a safe way
+
+
+def day_range(start_date, end_date):
+    current = start_date
+    while current < end_date:
+        yield current
+        current = date.fromordinal(current.toordinal() + 1)
+
+
+# =========================================================
+# HTML PARSERS
+# =========================================================
+class GoogleSheetHTMLParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.in_style = False
+        self.style_chunks = []
+
+        self.tables = []
+        self.current_table = None
+        self.current_row = None
+        self.current_cell = None
+
+    def handle_starttag(self, tag, attrs):
+        attrs_dict = dict(attrs)
+
+        if tag == "style":
+            self.in_style = True
+            return
+
+        if tag == "table":
+            self.current_table = []
+            return
+
+        if tag == "tr" and self.current_table is not None:
+            self.current_row = []
+            return
+
+        if tag in ("td", "th") and self.current_row is not None:
+            self.current_cell = {
+                "text": "",
+                "attrs": attrs_dict
+            }
+            return
+
+        if tag == "br" and self.current_cell is not None:
+            self.current_cell["text"] += "\n"
+
+    def handle_data(self, data):
+        if self.in_style:
+            self.style_chunks.append(data)
+        elif self.current_cell is not None:
+            self.current_cell["text"] += data
+
+    def handle_endtag(self, tag):
+        if tag == "style":
+            self.in_style = False
+            return
+
+        if tag in ("td", "th") and self.current_row is not None and self.current_cell is not None:
+            self.current_cell["text"] = self.current_cell["text"].strip()
+            self.current_row.append(self.current_cell)
+            self.current_cell = None
+            return
+
+        if tag == "tr" and self.current_table is not None and self.current_row is not None:
+            self.current_table.append(self.current_row)
+            self.current_row = None
+            return
+
+        if tag == "table" and self.current_table is not None:
+            self.tables.append(self.current_table)
+            self.current_table = None
+            return
+
+    @property
+    def styles_text(self):
+        return "\n".join(self.style_chunks)
+
+
+def fetch_sheet_parser(sheet_url):
+    url = normalize_google_sheet_url(sheet_url)
+    response = requests.get(url, headers=HEADERS, timeout=25)
+    response.raise_for_status()
+
+    parser = GoogleSheetHTMLParser()
+    parser.feed(response.text)
+    return parser
+
+
+def parse_css_class_colors(styles_text):
+    class_colors = {}
+
+    # .s0 {background-color:#00ff00;}
+    for match in re.finditer(r"\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}", styles_text, re.DOTALL):
+        class_name = match.group(1)
+        css_body = match.group(2)
+
+        bg_match = re.search(r"background-color\s*:\s*([^;]+)", css_body, re.IGNORECASE)
+        if bg_match:
+            class_colors[class_name] = bg_match.group(1).strip()
+
+    return class_colors
+
+
+def extract_background_from_cell(cell, class_colors):
+    attrs = cell.get("attrs", {})
+    style = attrs.get("style", "") or ""
+    class_attr = attrs.get("class", "") or ""
+
+    style_match = re.search(r"background-color\s*:\s*([^;]+)", style, re.IGNORECASE)
+    if style_match:
+        return style_match.group(1).strip()
+
+    classes = []
+    if isinstance(class_attr, str):
+        classes = class_attr.split()
+
+    for cls in classes:
+        if cls in class_colors:
+            return class_colors[cls]
+
+    bgcolor = attrs.get("bgcolor")
+    if bgcolor:
+        return bgcolor.strip()
+
+    return ""
+
+
+def parse_color_to_rgb(color_value):
+    if not color_value:
+        return None
+
+    color_value = color_value.strip().lower()
+
+    named = {
+        "green": (0, 128, 0),
+        "yellow": (255, 255, 0),
+        "orange": (255, 165, 0),
+        "red": (255, 0, 0),
+        "white": (255, 255, 255),
+        "black": (0, 0, 0)
+    }
+    if color_value in named:
+        return named[color_value]
+
+    hex_match = re.match(r"#([0-9a-f]{3}|[0-9a-f]{6})$", color_value)
+    if hex_match:
+        h = hex_match.group(1)
+        if len(h) == 3:
+            h = "".join(ch * 2 for ch in h)
+        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+    rgb_match = re.match(r"rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)", color_value)
+    if rgb_match:
+        return tuple(int(rgb_match.group(i)) for i in range(1, 4))
+
+    return None
+
+
+def color_to_status(color_value):
+    rgb = parse_color_to_rgb(color_value)
+    if not rgb:
+        return None
+
+    r, g, b = rgb
+
+    # green = available
+    if g >= 150 and r <= 180 and b <= 180:
+        return "available"
+
+    # yellow = on hold
+    if r >= 180 and g >= 180 and b <= 140:
+        return "on_hold"
+
+    # orange/red = booked
+    if r >= 170 and g <= 190:
+        return "booked"
+
+    return None
+
+
+def cell_status(cell, class_colors):
+    bg = extract_background_from_cell(cell, class_colors)
+    status = color_to_status(bg)
+    if status:
+        return status
+
+    txt = normalize_text(cell.get("text", ""))
+
+    if "available" in txt:
+        return "available"
+    if "booked" in txt or "rented" in txt or "payment received" in txt:
+        return "booked"
+    if "on hold" in txt or "pending" in txt:
+        return "on_hold"
+
+    return None
+
+
+def detect_year_from_tables(tables):
+    for table in tables:
+        for row in table:
+            for cell in row:
+                text = cell.get("text", "")
+                match = re.search(r"\b(20\d{2})\b", text)
+                if match:
+                    return int(match.group(1))
+    return datetime.now().year
+
+
+def is_numeric_day(text):
+    txt = str(text).strip()
+    return re.fullmatch(r"\d{1,2}", txt) is not None
+
+
+# =========================================================
+# DOC PARSERS
+# =========================================================
+def parse_timeline_sheet_dates(sheet_url):
+    parser = fetch_sheet_parser(sheet_url)
+    tables = parser.tables
+    class_colors = parse_css_class_colors(parser.styles_text)
+    year = detect_year_from_tables(tables)
+
+    parsed_dates = {}
+
+    for table in tables:
+        for row in table:
+            if not row:
+                continue
+
+            month_num = None
+            month_index = None
+
+            for idx, cell in enumerate(row):
+                month_num = month_name_to_number(cell.get("text", ""))
+                if month_num:
+                    month_index = idx
+                    break
+
+            if not month_num:
+                continue
+
+            for cell in row[month_index + 1:]:
+                text = cell.get("text", "").strip()
+                if not is_numeric_day(text):
+                    continue
+
+                status = cell_status(cell, class_colors)
+                if not status:
+                    continue
+
+                day_num = int(text)
+                try:
+                    parsed_dates[date(year, month_num, day_num)] = status
+                except ValueError:
+                    continue
+
+    return parsed_dates
+
+
+def parse_monthly_sheet_dates(sheet_url):
+    parser = fetch_sheet_parser(sheet_url)
+    tables = parser.tables
+    class_colors = parse_css_class_colors(parser.styles_text)
+    year = detect_year_from_tables(tables)
+
+    parsed_dates = {}
+    cal = calendar.Calendar(firstweekday=6)  # Sunday first
+
+    for table in tables:
+        current_month = None
+        week_rows = []
+        collecting = False
+
+        for row in table:
+            row_texts = [normalize_text(c.get("text", "")) for c in row]
+            joined = " ".join(row_texts)
+
+            found_month = None
+            for text in row_texts:
+                month_num = month_name_to_number(text)
+                if month_num:
+                    found_month = month_num
+                    break
+
+            if found_month:
+                if current_month and week_rows:
+                    month_matrix = cal.monthdayscalendar(year, current_month)
+                    for week_index, week_row in enumerate(week_rows):
+                        if week_index >= len(month_matrix):
+                            break
+
+                        expected_week = month_matrix[week_index]
+                        numeric_cells = []
+                        for cell in week_row:
+                            if is_numeric_day(cell.get("text", "").strip()):
+                                numeric_cells.append(cell)
+
+                        if len(numeric_cells) < 7:
+                            continue
+
+                        for col in range(7):
+                            expected_day = expected_week[col]
+                            cell = numeric_cells[col]
+                            text = cell.get("text", "").strip()
+
+                            if not is_numeric_day(text):
+                                continue
+
+                            shown_day = int(text)
+                            if expected_day == 0 or shown_day != expected_day:
+                                continue
+
+                            status = cell_status(cell, class_colors)
+                            if not status:
+                                continue
+
+                            try:
+                                parsed_dates[date(year, current_month, shown_day)] = status
+                            except ValueError:
+                                pass
+
+                current_month = found_month
+                week_rows = []
+                collecting = False
+                continue
+
+            if not current_month:
+                continue
+
+            # weekday header
+            weekday_tokens = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"}
+            if any(token in weekday_tokens for token in row_texts):
+                collecting = True
+                continue
+
+            if collecting:
+                numeric_count = sum(1 for c in row if is_numeric_day(c.get("text", "").strip()))
+                if numeric_count >= 7:
+                    week_rows.append(row)
+
+        # flush last month in this table
+        if current_month and week_rows:
+            month_matrix = cal.monthdayscalendar(year, current_month)
+            for week_index, week_row in enumerate(week_rows):
+                if week_index >= len(month_matrix):
+                    break
+
+                expected_week = month_matrix[week_index]
+                numeric_cells = []
+                for cell in week_row:
+                    if is_numeric_day(cell.get("text", "").strip()):
+                        numeric_cells.append(cell)
+
+                if len(numeric_cells) < 7:
+                    continue
+
+                for col in range(7):
+                    expected_day = expected_week[col]
+                    cell = numeric_cells[col]
+                    text = cell.get("text", "").strip()
+
+                    if not is_numeric_day(text):
+                        continue
+
+                    shown_day = int(text)
+                    if expected_day == 0 or shown_day != expected_day:
+                        continue
+
+                    status = cell_status(cell, class_colors)
+                    if not status:
+                        continue
+
+                    try:
+                        parsed_dates[date(year, current_month, shown_day)] = status
+                    except ValueError:
+                        pass
+
+    return parsed_dates
+
+
+def is_available_from_sheet_timeline(sheet_url, start_date, end_date):
+    try:
+        parsed_dates = parse_timeline_sheet_dates(sheet_url)
+        if not parsed_dates:
+            return None, "Timeline sheet could not be parsed"
+
+        for d in day_range(start_date.date(), end_date.date()):
+            status = parsed_dates.get(d)
+
+            if status in {"booked", "on_hold"}:
+                return False, f"Unavailable in doc ({status})"
+
+        # if dates exist and none blocked, assume available
+        date_hits = sum(1 for d in day_range(start_date.date(), end_date.date()) if d in parsed_dates)
+        if date_hits > 0:
+            return True, "Available from doc"
+
+        return None, "Requested dates not found in timeline doc"
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching timeline sheet {sheet_url}: {e}")
+        return None, "Timeline sheet could not be fetched"
+    except Exception as e:
+        print(f"Error parsing timeline sheet {sheet_url}: {e}")
+        return None, "Timeline sheet could not be parsed"
+
+
+def is_available_from_sheet_monthly(sheet_url, start_date, end_date):
+    try:
+        parsed_dates = parse_monthly_sheet_dates(sheet_url)
+        if not parsed_dates:
+            return None, "Monthly sheet could not be parsed"
+
+        for d in day_range(start_date.date(), end_date.date()):
+            status = parsed_dates.get(d)
+
+            if status in {"booked", "on_hold"}:
+                return False, f"Unavailable in doc ({status})"
+
+        date_hits = sum(1 for d in day_range(start_date.date(), end_date.date()) if d in parsed_dates)
+        if date_hits > 0:
+            return True, "Available from doc"
+
+        return None, "Requested dates not found in monthly doc"
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching monthly sheet {sheet_url}: {e}")
+        return None, "Monthly sheet could not be fetched"
+    except Exception as e:
+        print(f"Error parsing monthly sheet {sheet_url}: {e}")
+        return None, "Monthly sheet could not be parsed"
+
+
+# =========================================================
+# ICAL
+# =========================================================
 def is_available_from_ical(ical_url, start_date, end_date):
     try:
         response = requests.get(ical_url, headers=HEADERS, timeout=20)
@@ -201,9 +715,18 @@ def check_villa_availability(villa, start_date, end_date):
     if source_type == "ical":
         return is_available_from_ical(villa.get("ical", ""), start_date, end_date)
 
+    if source_type == "sheet_timeline":
+        return is_available_from_sheet_timeline(villa.get("sheet_url", ""), start_date, end_date)
+
+    if source_type == "sheet_monthly":
+        return is_available_from_sheet_monthly(villa.get("sheet_url", ""), start_date, end_date)
+
     return None, "Unknown calendar source"
 
 
+# =========================================================
+# VILLAS
+# =========================================================
 villas = [
     {
         "name": "Villa Bayview",
@@ -358,7 +881,26 @@ villas = [
         "maps_url": "https://maps.app.goo.gl/RFGQb76QcXich3u27",
         "source_type": "ical",
         "ical": "https://ical.avaibook.com/ical/ua_06f11b2f6d194953b7323b24d883bc10-0e01938fc48a2cfb5f2217fbfb00722d-77ddc50a60c37d3f55bf337d558b9182.ics"
+    },
+
+    # DOC TYPE 1: timeline / bands
+    {
+        "name": "Talamanca Heights",
+        "new_name": "Pendiente",
+        "zone": "Jesús",
+        "approx_zone": "Eivissa",
+        "bedrooms": 4,
+        "bathrooms": 0,
+        "capacity": 8,
+        "villa_type": "1",
+        "license": "",
+        "maps_url": "",
+        "source_type": "sheet_timeline",
+        "sheet_url": "https://docs.google.com/spreadsheets/d/1WcvBrQHgE_L8DuM9hRzEW9cid3ghpHGGYoI1BsTHQYc/edit?gid=2024190730#gid=2024190730"
     }
+
+    # Si luego me pasas el nombre exacto de la villa de La Reposada o del otro doc,
+    # te la meto como sheet_monthly con su sheet_url.
 ]
 
 
@@ -492,7 +1034,11 @@ def check():
             "maps_url": villa.get("maps_url", ""),
             "villa_type": villa_type_value,
             "source_type": villa.get("source_type", "ical"),
-            "matched_by_nearby_zone": zone_filter is not None and villa_zone != zone_filter and zone_matches(zone_filter, villa_zone)
+            "matched_by_nearby_zone": (
+                zone_filter is not None
+                and villa_zone != zone_filter
+                and zone_matches(zone_filter, villa_zone)
+            )
         }
 
         if available is None:
