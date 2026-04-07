@@ -1,32 +1,17 @@
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 from datetime import datetime
 import re
 import unicodedata
-import os
 
 app = Flask(__name__)
-
-# Cambia esto en Render con una env var si quieres más seguridad
-app.secret_key = os.getenv("SECRET_KEY", "cvaz-super-secret-key-2026")
-
-CORS(
-    app,
-    supports_credentials=True,
-    resources={r"/*": {"origins": "*"}}
-)
+CORS(app)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Villa Availability Checker)"
 }
 
-APP_PASSWORD = "CvazIbiza2026!"
-
-
-# =========================================================
-# HELPERS
-# =========================================================
 ANY_VALUES = {"", "any", "all", "todos", "todas", "cualquiera", "none", "null"}
 
 ZONE_ALIASES = {
@@ -173,20 +158,6 @@ def extract_date(value):
         return None
 
 
-def require_login():
-    return session.get("logged_in") is True
-
-
-def unauthorized_response():
-    return jsonify({
-        "ok": False,
-        "error": "Unauthorized"
-    }), 401
-
-
-# =========================================================
-# AVAILABILITY
-# =========================================================
 def is_available_from_ical(ical_url, start_date, end_date):
     try:
         response = requests.get(ical_url, headers=HEADERS, timeout=20)
@@ -233,9 +204,6 @@ def check_villa_availability(villa, start_date, end_date):
     return None, "Unknown calendar source"
 
 
-# =========================================================
-# VILLAS
-# =========================================================
 villas = [
     {
         "name": "Villa Bayview",
@@ -394,9 +362,6 @@ villas = [
 ]
 
 
-# =========================================================
-# AUTH
-# =========================================================
 @app.route("/")
 def home():
     return jsonify({
@@ -405,49 +370,8 @@ def home():
     })
 
 
-@app.route("/auth/status", methods=["GET"])
-def auth_status():
-    return jsonify({
-        "ok": True,
-        "authenticated": require_login()
-    })
-
-
-@app.route("/auth/login", methods=["POST"])
-def auth_login():
-    data = request.get_json(silent=True) or {}
-    password = data.get("password", "")
-
-    if password == APP_PASSWORD:
-        session["logged_in"] = True
-        return jsonify({
-            "ok": True,
-            "message": "Login successful"
-        })
-
-    return jsonify({
-        "ok": False,
-        "error": "Incorrect password"
-    }), 401
-
-
-@app.route("/auth/logout", methods=["POST"])
-def auth_logout():
-    session.clear()
-    return jsonify({
-        "ok": True,
-        "message": "Logged out"
-    })
-
-
-# =========================================================
-# ROUTES
-# =========================================================
 @app.route("/filters")
 def filters():
-    if not require_login():
-        return unauthorized_response()
-
     exact_zones = {get_villa_zone(villa) for villa in villas}
 
     extra_known_zones = {
@@ -489,9 +413,6 @@ def filters():
 
 @app.route("/check")
 def check():
-    if not require_login():
-        return unauthorized_response()
-
     start_str = request.args.get("start")
     end_str = request.args.get("end")
     bedrooms_str = parse_optional_filter(request.args.get("bedrooms"))
