@@ -152,39 +152,6 @@ def filters():
     })
 
 
-@app.route("/calendar-links")
-def calendar_links():
-    return jsonify({
-        "ok": True,
-        "links": [
-            {
-                "display_name": "Ivilling",
-                "calendar_url": "https://www.ivilling.es/",
-                "zone": "External",
-                "calendar_label": "Open site"
-            },
-            {
-                "display_name": "Tom Benzon Bookings",
-                "calendar_url": "https://www.tombenzon.com/bookings/",
-                "zone": "External",
-                "calendar_label": "Open site"
-            },
-            {
-                "display_name": "NC Agent Kross Travel",
-                "calendar_url": "https://nc-agent.kross.travel/en/villas",
-                "zone": "External",
-                "calendar_label": "Open site"
-            },
-            {
-                "display_name": "Ibiza My Villa Agents",
-                "calendar_url": "https://agents.ibizamyvilla.com/book/step1",
-                "zone": "External",
-                "calendar_label": "Open site"
-            }
-        ]
-    })
-
-
 @app.route("/check")
 def check():
     start_str = request.args.get("start", "").strip()
